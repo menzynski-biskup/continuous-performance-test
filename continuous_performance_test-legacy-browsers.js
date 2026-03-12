@@ -10,6 +10,16 @@ let expInfo = {
     'session': '001',
 };
 
+// Read participant and session from URL parameters (for Qualtrics integration)
+const _urlParams = new URLSearchParams(window.location.search);
+if (_urlParams.has('participant')) {
+  expInfo['participant'] = _urlParams.get('participant');
+}
+if (_urlParams.has('session')) {
+  expInfo['session'] = _urlParams.get('session');
+}
+const _hasUrlParams = _urlParams.has('participant');
+
 // Start code blocks for 'Before Experiment'
 // init psychoJS:
 const psychoJS = new PsychoJS({
@@ -25,15 +35,21 @@ psychoJS.openWindow({
   backgroundImage: '',
   backgroundFit: 'none',
 });
-// schedule the experiment:
-psychoJS.schedule(psychoJS.gui.DlgFromDict({
-  dictionary: expInfo,
-  title: expName
-}));
 
 const flowScheduler = new Scheduler(psychoJS);
 const dialogCancelScheduler = new Scheduler(psychoJS);
-psychoJS.scheduleCondition(function() { return (psychoJS.gui.dialogComponent.button === 'OK'); }, flowScheduler, dialogCancelScheduler);
+
+// Skip dialog when participant ID comes from URL (e.g. launched from Qualtrics)
+if (_hasUrlParams) {
+  psychoJS.scheduleCondition(function() { return true; }, flowScheduler, dialogCancelScheduler);
+} else {
+  // Show dialog for standalone use (not launched from Qualtrics)
+  psychoJS.schedule(psychoJS.gui.DlgFromDict({
+    dictionary: expInfo,
+    title: expName
+  }));
+  psychoJS.scheduleCondition(function() { return (psychoJS.gui.dialogComponent.button === 'OK'); }, flowScheduler, dialogCancelScheduler);
+}
 
 // flowScheduler gets run if the participants presses OK
 flowScheduler.add(updateInfo); // add timeStamp
@@ -335,7 +351,7 @@ function trialsLoopBegin(trialsLoopScheduler, snapshot) {
     // set up handler to look after randomisation of conditions etc
     trials = new TrialHandler({
       psychoJS: psychoJS,
-      nReps: 1, method: TrialHandler.Method.RANDOM,
+      nReps: 3, method: TrialHandler.Method.RANDOM,
       extraInfo: expInfo, originPath: undefined,
       trialList: 'conditions.xlsx',
       seed: undefined, name: 'trials'
@@ -596,7 +612,8 @@ function EndRoutineBegin(snapshot) {
     continueRoutine = true; // until we're told otherwise
     // update component parameters for each repeat
     psychoJS.experiment.addData('End.started', globalClock.getTime());
-    thank_you.setText((((("You scored " + correct_counter.toString()) + "/") + trials.nTotal.toString()) + " correct!"));
+    thank_you.setText((((("You scored " + correct_counter.toString()) + "/") + trials.nTotal.toString()) + " correct!\n\nThis task is finished. You can return to the Qualtrics survey."));
+    routineTimer.add(5.000000);
     // keep track of which components have finished
     EndComponents = [];
     EndComponents.push(thank_you);
@@ -627,6 +644,11 @@ function EndRoutineEachFrame() {
       thank_you.setAutoDraw(true);
     }
     
+    frameRemains = 0.0 + 5.0 - psychoJS.window.monitorFramePeriod * 0.75;  // most of one frame period left
+    if (thank_you.status === PsychoJS.Status.STARTED && t >= frameRemains) {
+      thank_you.setAutoDraw(false);
+    }
+    
     // check for quit (typically the Esc key)
     if (psychoJS.experiment.experimentEnded || psychoJS.eventManager.getKeys({keyList:['escape']}).length > 0) {
       return quitPsychoJS('The [Escape] key was pressed. Goodbye!', false);
@@ -645,7 +667,7 @@ function EndRoutineEachFrame() {
     });
     
     // refresh the screen if continuing
-    if (continueRoutine) {
+    if (continueRoutine && routineTimer.getTime() > 0) {
       return Scheduler.Event.FLIP_REPEAT;
     } else {
       return Scheduler.Event.NEXT;
